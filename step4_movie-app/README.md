@@ -1,129 +1,56 @@
-# Containerized Movie Explorer
+﻿# Containerized Movie Explorer
 
-The explorer is a lightweight, decoupled three-tier microservices application designed for isolated container execution across a shared Docker bridge network (movie-net). It enables users to browse and filter a database of movies dynamically by genre (Drama, Comedy, Thriller).
+Movie Explorer runs MongoDB, a Flask API, an Nginx UI, and the Qwen2.5-0.5B-Instruct Hugging Face model in a separate AI container. Nginx exposes the application at `http://localhost:8181`; its `/api` routes go to the API. The API filters movies by category and can ask the AI service for a text recommendation.
 
-## Architecture Components
+## Start locally (WSL Ubuntu)
 
-**Frontend (movie-ui):**  A lightweight Nginx web server hosting a plain HTML/JavaScript interface. It executes asynchronous fetch calls from the client's browser to retrieve dynamic movie data.
+Install Docker Engine with Compose and start it, then:
 
-**Backend API (movie-api):** A Python Flask REST API wrapped with Flask-CORS. It handles incoming HTTP requests on port 5001, queries the MongoDB instance over the internal container network, and enforces _id field exclusion for clean JSON serialization.
-
-**Database (movie-db):** A MongoDB 6.0 instance pre-seeded with initial movie documents using mongoimport. It persists data inside the movies_db database on standard port 27017.
-
-| Service | Container Name | Technology | Internal Port | Host Port | Primary Function |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Frontend** | `movie-ui` | Nginx / HTML / JS | `80` | `8181` | Serves the UI to the client browser |
-| **Backend** | `movie-api` | Python 3.10 / Flask | `5000` | `5001` | Processes API requests and queries MongoDB |
-| **Database** | `movie-db` | MongoDB 6.0 | `27017` | `27017` | Stores movie documents in `movies_db` |
-
-```
-+-----------------------------------------------------------------------------------+
-|                                     HOST SYSTEM                                   |
-|                                                                                   |
-|   +-------------------+                         +-----------------------------+   |
-|   |   Web Browser     |                         |    macOS AirPlay Service    |   |
-|   |  (Client Machine) |                         |  (Binds to Port 5000: 403)  |   |
-|   +---------+---------+                         +-----------------------------+   |
-|             |                                                                     |
-|             | HTTP Request (http://localhost:8181)                                |
-|             v                                                                     |
-|   +---------------------------------------------------------------------------+   |
-|   |                         DOCKER ENGINE / CONTAINER NETWORK                 |   |
-|   |                                                                           |   |
-|   |  +--------------------+                                                   |   |
-|   |  |     movie-ui       |                                                   |   |
-|   |  |  (Nginx Web Server)|                                                   |   |
-|   |  +--------------------+                                                   |   |
-|   |                                                                           |   |
-|   |  Client-Side API Fetch (http://localhost:5001/api/movies?category=...)    |   |
-|   |  +-----------------------------------+                                    |   |
-|   |  |                                   |                                    |   |
-|   |  v                                   v                                    |   |
-|   |  +--------------------+  movie-net   +--------------------+               |   |
-|   |  |     movie-api      |------------->|      movie-db      |               |   |
-|   |  |  (Python/Flask)    |  TCP:27017   |     (MongoDB)      |               |   |
-|   |  +--------------------+              +--------------------+               |   |
-|   |    Container Port: 5000                Container Port: 27017              |   |
-|   |    Host Port: 5001                     Host Port: 27017                   |   |
-|   |                                                                           |   |
-|   +---------------------------------------------------------------------------+   |
-+-----------------------------------------------------------------------------------+
+```bash
+cd step4_movie-app
+cp .env.example .env
+nano .env # set a long random MONGO_ROOT_PASSWORD
+export DOCKERHUB_USERNAME=local
+export IMAGE_TAG=dev
+docker compose up -d --build
 ```
 
-## Step 1: Create the Isolated Bridge Network
-```
-docker network create movie-net
-```
+Open `http://localhost:8181`. Category listing: `http://localhost:8181/api/movies?category=comedy`. AI recommendation: `http://localhost:8181/api/recommendations?category=comedy`. The first start downloads the model (about 1 GB) and can take several minutes; allow several GB of free RAM for inference. Watch progress with `docker compose logs -f movie-ai`.
 
-## Step 2: Spin up MongoDB Container & Seed Initial Data
-```
-docker run -d \
-  --name movie-db \
-  --network movie-net \
-  -p 27017:27017 \
-  mongo:6.0
+Check services with `docker compose ps`; stop with `docker compose down`. `docker compose down -v` also deletes the MongoDB database and downloaded model cache.
 
-docker cp mongo/init.json movie-db:/tmp/init.json
+## Tests and SonarQube
 
-docker exec -i movie-db mongoimport \
-  --db movies_db \
-  --collection movies \
-  --file /tmp/init.json \
-  --jsonArray
+Run the small API test with coverage:
 
-docker exec -it movie-db mongosh movies_db --eval "db.movies.find()"
+```bash
+docker compose -f docker-compose.test.yml run --build --rm movie-tests
 ```
 
-## Step 3: Build & Run Python Backend API Container
-```
-docker build -t movie-backend backend/
+`Dockerfile.tests` provides a manual test image configuration too. The CI workflow at `../.github/workflows/movie-app.yml` scans the result to SonarQube. Run SonarQube on the same machine (commonly with its own Compose stack) and set GitHub variable `SONAR_HOST_URL` to a runner-reachable URL, plus secret `SONAR_TOKEN`.
 
-docker run -d \
-  --name movie-api \
-  --network movie-net \
-  -p 5001:5000 \
-  movie-backend
+## CI/CD and Docker Hub
 
-docker logs --tail 50 movie-api
+The GitHub Actions workflow uses a Windows x64 **self-hosted runner** with Docker Desktop. Register the runner for this repository using GitHub's Settings → Actions → Runners guide, and leave its runner service running. Add repository secrets:
 
-docker exec -it movie-api python -c "
-from pymongo import MongoClient
-client = MongoClient('mongodb://movie-db:27017/')
-db = client['movies_db']
-print(list(db.movies.find({}, {'_id': 0})))
-"
-```
+- `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (create a Docker Hub access token)
+- `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD`
+- `SONAR_TOKEN`
 
-## Step 4: Build & Run JavaScript Frontend Container
-```
-docker build -t movie-frontend frontend/
+Add repository variable `SONAR_HOST_URL`. The workflow tests/scans pull requests. On a push to `main`, after checks pass, it tags API/UI/AI images with the full commit SHA, pushes them to Docker Hub, and deploys the Compose stack on the runner. The runner checkout needs a `step4_movie-app/.env` populated with the same Mongo credentials before its first deployment; `.env` is ignored by Git.
 
-docker run -d \
-  --name movie-ui \
-  --network movie-net \
-  -p 8181:80 \
-  movie-frontend
+## Gitflow branch routine
+
+Protect `main` and require reviewed pull requests. Use `develop` for integration; feature branches start there and merge back by PR. Create release branches from `develop`, stabilize them, merge to `main` and back to `develop`, then create a `vX.Y.Z` tag on the release commit. Create hotfix branches from `main`, merge the fix to `main` and back to `develop`, and tag the patch release.
+
+```bash
+git switch main
+git pull
+git switch -c develop
+git push -u origin develop
+git switch -c feature/ai-recommendations
+# edit, commit, push feature branch; open PR -> develop
 ```
 
-## Step5. Verification & Testing
-```
+A `main` push triggers publish and deployment; feature and develop work runs checks only. Use commit prefixes such as `feat:`, `fix:`, and `test:` so changes are easy to review. Image tags use commit SHA for traceable rollbacks.
 
-http://localhost:8181/
-
-curl -s "http://localhost:5001/api/movies?category=comedy"
-```
-
-## Step 6. Clean up the stack
-```
-# Stop and remove all 3 running containers
-docker rm -f movie-ui movie-api movie-db
-
-# Delete custom Docker images
-docker rmi movie-frontend movie-backend
-
-# Delete the custom network
-docker network rm movie-net
-
-# Optional remove unused system caches and dangling resources
-docker system prune -f
-```
