@@ -28,8 +28,7 @@
     <script>
         async function fetchMovies() {
             const category = document.getElementById('categorySelect').value;
-            // Updated port to 5001
-            const response = await fetch(`http://localhost:5001/api/movies?category=${category}`);
+            const response = await fetch(`/api/movies?category=${encodeURIComponent(category)}`);
             const data = await response.json();
 
             const list = document.getElementById('movieList');
