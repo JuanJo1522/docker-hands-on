@@ -27,7 +27,7 @@ jobs:
             -e SONAR_HOST_URL="$SONAR_HOST_URL" \
             -e SONAR_TOKEN="$SONAR_TOKEN" \
             -v "$GITHUB_WORKSPACE:/usr/src" \
-            sonarsource/sonar-scanner-cli:5.0 \
+            sonarsource/sonar-scanner-cli:12.2.0.4256_8.1.0 \
             sonar-scanner \
               -Dsonar.projectBaseDir=/usr/src/step4_movie-app \
               -Dsonar.host.url="$SONAR_HOST_URL" \
@@ -69,3 +69,4 @@ jobs:
       - name: Docker Hub logout
         if: always()
         run: docker logout
+
