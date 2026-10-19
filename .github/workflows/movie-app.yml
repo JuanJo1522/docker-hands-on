@@ -58,6 +58,8 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ github.sha }}
+          MONGO_ROOT_USERNAME: ci-build
+          MONGO_ROOT_PASSWORD: ci-build
         run: |
           docker compose build movie-api movie-ui movie-ai
           docker compose push movie-api movie-ui movie-ai

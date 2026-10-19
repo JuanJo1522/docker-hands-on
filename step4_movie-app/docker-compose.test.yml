@@ -4,3 +4,5 @@ services:
       context: .
       dockerfile: Dockerfile.tests
     image: local/movie-tests:${IMAGE_TAG:-dev}
+    volumes:
+      - ./test-results:/workspace/test-results
