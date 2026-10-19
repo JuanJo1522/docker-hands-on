@@ -6,7 +6,10 @@ import requests
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-client = MongoClient(os.environ["MONGO_URI"], serverSelectionTimeoutMS=5000)
+client = MongoClient(
+    os.getenv("MONGO_URI", "mongodb://movie-db:27017/movies_db"),
+    serverSelectionTimeoutMS=5000,
+)
 db = client.get_database("movies_db")
 AI_URL = os.getenv("AI_URL", "http://movie-ai:8000")
 
