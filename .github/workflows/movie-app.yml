@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   test-and-scan:
-    runs-on: [self-hosted, windows, x64]
+    runs-on: [self-hosted, linux, x64]
     defaults:
       run:
         shell: pwsh
@@ -35,7 +35,7 @@ jobs:
   publish-and-deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: test-and-scan
-    runs-on: [self-hosted, windows, x64]
+    runs-on: [self-hosted, linux, x64]
     defaults:
       run:
         shell: pwsh
