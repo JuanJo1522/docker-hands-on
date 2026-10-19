@@ -1,0 +1,6 @@
+services:
+  movie-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    image: local/movie-tests:${IMAGE_TAG:-dev}

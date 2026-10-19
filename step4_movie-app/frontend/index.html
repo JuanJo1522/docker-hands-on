@@ -1,53 +1,52 @@
-<!DOCTYPE html>
-<html lang="en">
+﻿<!DOCTYPE html>
+<html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Movie Explorer</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f8; }
-        .container { max-width: 600px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        select, button { padding: 8px 12px; font-size: 14px; margin-right: 10px; }
-        ul { list-style-type: none; padding: 0; margin-top: 20px; }
-        li { background: #eef2f5; margin: 5px 0; padding: 10px; border-radius: 4px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Movie Explorer</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; background: #f4f6f8; }
+    main { max-width: 700px; background: white; padding: 24px; border-radius: 8px; }
+    select, button { padding: 9px 12px; margin: 4px; }
+    li { background: #eef2f5; margin: 6px 0; padding: 10px; border-radius: 4px; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h2>🎬 Movie Category Explorer</h2>
-        <select id="categorySelect">
-            <option value="">All Categories</option>
-            <option value="drama">Drama</option>
-            <option value="comedy">Comedy</option>
-            <option value="thriller">Thriller</option>
-        </select>
-        <button onclick="fetchMovies()">Filter Movies</button>
-
-        <ul id="movieList"></ul>
-    </div>
-
-    <script>
-        async function fetchMovies() {
-            const category = document.getElementById('categorySelect').value;
-            const response = await fetch(`/api/movies?category=${encodeURIComponent(category)}`);
-            const data = await response.json();
-
-            const list = document.getElementById('movieList');
-            list.innerHTML = '';
-
-            if (!data.movies || data.movies.length === 0) {
-                list.innerHTML = '<li>No movies found.</li>';
-                return;
-            }
-
-            data.movies.forEach(movie => {
-                const li = document.createElement('li');
-                li.textContent = `${movie.title} (${movie.year}) - [${movie.category.toUpperCase()}]`;
-                list.appendChild(li);
-            });
-        }
-
-        // Initial load
-        fetchMovies();
-    </script>
+<main>
+  <h1>🎬 Movie Explorer</h1>
+  <label for="category">Categoría</label>
+  <select id="category">
+    <option value="">Todas</option><option value="drama">Drama</option>
+    <option value="comedy">Comedia</option><option value="thriller">Thriller</option>
+  </select>
+  <button id="filter">Buscar películas</button>
+  <button id="recommend">Recomendación con IA</button>
+  <p id="recommendation" aria-live="polite"></p>
+  <ul id="movies"></ul>
+</main>
+<script>
+const category = document.querySelector('#category');
+const list = document.querySelector('#movies');
+async function loadMovies() {
+  list.replaceChildren();
+  const response = await fetch(`/api/movies?category=${encodeURIComponent(category.value)}`);
+  const data = await response.json();
+  for (const movie of data.movies || []) {
+    const item = document.createElement('li');
+    item.textContent = `${movie.title} (${movie.year}) — ${movie.category}`;
+    list.append(item);
+  }
+  if (!data.count) list.innerHTML = '<li>No se encontraron películas.</li>';
+}
+document.querySelector('#filter').addEventListener('click', loadMovies);
+document.querySelector('#recommend').addEventListener('click', async () => {
+  const output = document.querySelector('#recommendation');
+  output.textContent = 'Generando recomendación (la primera solicitud puede tardar)...';
+  const response = await fetch(`/api/recommendations?category=${encodeURIComponent(category.value)}`);
+  const data = await response.json();
+  output.textContent = data.recommendation || data.error;
+});
+loadMovies();
+</script>
 </body>
 </html>

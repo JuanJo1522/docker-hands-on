@@ -1,0 +1,69 @@
+﻿name: movie-app-ci-cd
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main, "release/**", "hotfix/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-and-scan:
+    runs-on: [self-hosted, windows, x64]
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: step4_movie-app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests with coverage
+        run: |
+          docker compose -f docker-compose.test.yml run --build --rm movie-tests
+      - name: SonarQube scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        run: |
+          docker run --rm --network host `
+            -e SONAR_HOST_URL="$env:SONAR_HOST_URL" `
+            -e SONAR_TOKEN="$env:SONAR_TOKEN" `
+            -v "${{ github.workspace }}:/usr/src" `
+            sonarsource/sonar-scanner-cli:5.0 `
+            sonar-scanner -Dsonar.projectBaseDir=/usr/src/step4_movie-app -Dsonar.host.url="$env:SONAR_HOST_URL" -Dsonar.token="$env:SONAR_TOKEN"
+      - name: Validate Compose
+        run: docker compose config --quiet
+  publish-and-deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test-and-scan
+    runs-on: [self-hosted, windows, x64]
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: step4_movie-app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker Hub login
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          $env:DOCKERHUB_TOKEN | docker login -u $env:DOCKERHUB_USERNAME --password-stdin
+      - name: Build, tag, push images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker compose build movie-api movie-ui movie-ai
+          docker compose push movie-api movie-ui movie-ai
+      - name: Deploy stack on this machine
+        env:
+          MONGO_ROOT_USERNAME: ${{ secrets.MONGO_ROOT_USERNAME }}
+          MONGO_ROOT_PASSWORD: ${{ secrets.MONGO_ROOT_PASSWORD }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker compose pull movie-api movie-ui movie-ai
+          docker compose up -d --remove-orphans
+      - name: Docker Hub logout
+        if: always()
+        run: docker logout
