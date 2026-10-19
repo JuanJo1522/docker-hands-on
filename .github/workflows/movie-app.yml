@@ -15,7 +15,7 @@ jobs:
         shell: bash
         working-directory: step4_movie-app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run tests with coverage
         run: docker compose -f docker-compose.test.yml run --build --rm movie-tests
       - name: SonarQube scan
@@ -33,6 +33,10 @@ jobs:
               -Dsonar.host.url="$SONAR_HOST_URL" \
               -Dsonar.token="$SONAR_TOKEN"
       - name: Validate Compose
+        env:
+          # Placeholders validate Compose interpolation; deploy secrets are not needed for this syntax check.
+          MONGO_ROOT_USERNAME: ci-check
+          MONGO_ROOT_PASSWORD: ci-check
         run: docker compose config --quiet
 
   publish-and-deploy:
@@ -44,7 +48,7 @@ jobs:
         shell: bash
         working-directory: step4_movie-app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Docker Hub login
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
