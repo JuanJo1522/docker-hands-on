@@ -1,52 +1,141 @@
-﻿<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Movie Explorer</title>
+  <meta name="theme-color" content="#10131c">
+  <title>Cineclub — Explora películas</title>
+  <link rel="stylesheet" href="/vendor/beeq.css">
+  <script type="module" src="/vendor/beeq.esm.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; background: #f4f6f8; }
-    main { max-width: 700px; background: white; padding: 24px; border-radius: 8px; }
-    select, button { padding: 9px 12px; margin: 4px; }
-    li { background: #eef2f5; margin: 6px 0; padding: 10px; border-radius: 4px; }
+    :root { color-scheme: dark; --bg: #10131c; --panel: #191e2b; --muted: #a4adbf; --ink: #f7f8fb; --accent: #f3bb57; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(ellipse at 78% -12%, #3b3045 0, transparent 40%), var(--bg); color: var(--ink); font: 16px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; }
+    .shell { width: min(1120px, calc(100% - 40px)); margin: auto; }
+    header { padding: 26px 0; border-bottom: 1px solid #ffffff18; }
+    .brand { color: var(--accent); font-size: .83rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    .hero { padding: clamp(50px, 9vw, 100px) 0 44px; }
+    .eyebrow { color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .14em; font-size: .75rem; }
+    h1 { max-width: 760px; margin: 10px 0; font-size: clamp(2.5rem, 7vw, 5rem); line-height: .99; letter-spacing: -.055em; }
+    .intro { color: var(--muted); max-width: 600px; font-size: 1.1rem; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 30px 0 22px; }
+    label { display: grid; gap: 7px; color: var(--muted); font-size: .84rem; font-weight: 650; }
+    select { min-width: 210px; padding: 12px 38px 12px 14px; color: var(--ink); background: #202636; border: 1px solid #ffffff2c; border-radius: 10px; font: inherit; }
+    bq-button { display: inline-block; --bq-button--border-radius: 10px; }
+    .status { color: var(--muted); min-height: 1.5em; margin: 8px 0 20px; }
+    .recommendation { display: none; margin: 24px 0 32px; padding: 20px 22px; background: linear-gradient(120deg, #473523, #252337); border: 1px solid #f3bb5755; border-radius: 16px; }
+    .recommendation.visible { display: block; }
+    .recommendation h2 { margin: 0 0 6px; font-size: 1rem; color: var(--accent); }
+    .recommendation p { margin: 0; }
+    .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 36px 0 16px; }
+    .section-heading h2 { margin: 0; font-size: 1.35rem; }
+    .count { color: var(--muted); font-size: .9rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 16px; padding-bottom: 64px; }
+    .movie { overflow: hidden; min-height: 220px; padding: 20px; background: linear-gradient(145deg, #252d3e, var(--panel) 65%); border: 1px solid #ffffff16; border-radius: 16px; box-shadow: 0 14px 32px #0002; }
+    .movie:nth-child(4n+2) { background: linear-gradient(145deg, #3b2c35, var(--panel) 65%); }
+    .movie:nth-child(4n+3) { background: linear-gradient(145deg, #263c40, var(--panel) 65%); }
+    .movie:nth-child(4n+4) { background: linear-gradient(145deg, #393548, var(--panel) 65%); }
+    .movie-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .category { padding: 4px 9px; color: var(--accent); background: #f3bb571a; border-radius: 999px; font-size: .72rem; font-weight: 750; text-transform: capitalize; }
+    .year { color: var(--muted); font-size: .82rem; }
+    .movie h3 { margin: 24px 0 7px; font-size: 1.18rem; line-height: 1.2; }
+    .movie p { margin: 0; color: var(--muted); font-size: .91rem; }
+    footer { padding: 22px 0 36px; color: var(--muted); border-top: 1px solid #ffffff18; font-size: .84rem; }
+    @media (max-width: 560px) { .shell { width: min(100% - 28px, 1120px); } .toolbar { align-items: stretch; } .toolbar > * { width: 100%; } select { width: 100%; } }
   </style>
 </head>
 <body>
-<main>
-  <h1>🎬 Movie Explorer</h1>
-  <label for="category">Categoría</label>
-  <select id="category">
-    <option value="">Todas</option><option value="drama">Drama</option>
-    <option value="comedy">Comedia</option><option value="thriller">Thriller</option>
-  </select>
-  <button id="filter">Buscar películas</button>
-  <button id="recommend">Recomendación con IA</button>
-  <p id="recommendation" aria-live="polite"></p>
-  <ul id="movies"></ul>
-</main>
-<script>
-const category = document.querySelector('#category');
-const list = document.querySelector('#movies');
-async function loadMovies() {
-  list.replaceChildren();
-  const response = await fetch(`/api/movies?category=${encodeURIComponent(category.value)}`);
-  const data = await response.json();
-  for (const movie of data.movies || []) {
-    const item = document.createElement('li');
-    item.textContent = `${movie.title} (${movie.year}) — ${movie.category}`;
-    list.append(item);
-  }
-  if (!data.count) list.innerHTML = '<li>No se encontraron películas.</li>';
-}
-document.querySelector('#filter').addEventListener('click', loadMovies);
-document.querySelector('#recommend').addEventListener('click', async () => {
-  const output = document.querySelector('#recommendation');
-  output.textContent = 'Generando recomendación (la primera solicitud puede tardar)...';
-  const response = await fetch(`/api/recommendations?category=${encodeURIComponent(category.value)}`);
-  const data = await response.json();
-  output.textContent = data.recommendation || data.error;
-});
-loadMovies();
-</script>
+  <header><div class="shell"><div class="brand">Cineclub <span aria-hidden="true">✦</span></div></div></header>
+  <main class="shell">
+    <section class="hero" aria-labelledby="title">
+      <div class="eyebrow">Tu próxima película favorita</div>
+      <h1 id="title">Historias para cada estado de ánimo.</h1>
+      <p class="intro">Explora nuestra colección por categoría y deja que la IA elija una película para tu próxima noche de cine.</p>
+      <div class="toolbar">
+        <label for="category">Explorar por género
+          <select id="category">
+            <option value="">Todas las categorías</option>
+            <option value="drama">Drama</option>
+            <option value="comedy">Comedia</option>
+            <option value="thriller">Thriller</option>
+          </select>
+        </label>
+        <bq-button id="filter" type="button" appearance="primary">Ver películas</bq-button>
+        <bq-button id="recommend" type="button" appearance="secondary">Elegir con IA</bq-button>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+      <section id="recommendation" class="recommendation" aria-live="polite" aria-label="Recomendación de IA">
+        <h2>Una recomendación para ti</h2><p id="recommendation-text"></p>
+      </section>
+    </section>
+    <section aria-labelledby="movies-heading">
+      <div class="section-heading"><h2 id="movies-heading">En cartelera</h2><span id="count" class="count"></span></div>
+      <div id="movies" class="grid" aria-live="polite"></div>
+    </section>
+  </main>
+  <footer><div class="shell">Cineclub · Descubre, elige y disfruta.</div></footer>
+  <script>
+    const category = document.querySelector('#category');
+    const list = document.querySelector('#movies');
+    const status = document.querySelector('#status');
+    const count = document.querySelector('#count');
+    const recommendation = document.querySelector('#recommendation');
+    const categoryLabels = { drama: 'Drama', comedy: 'Comedia', thriller: 'Thriller' };
+
+    function setStatus(message) { status.textContent = message; }
+
+    async function loadMovies() {
+      setStatus('Cargando películas…');
+      list.replaceChildren();
+      try {
+        const response = await fetch(`/api/movies?category=${encodeURIComponent(category.value)}`);
+        if (!response.ok) throw new Error('No fue posible consultar la colección.');
+        const data = await response.json();
+        for (const movie of data.movies || []) {
+          const card = document.createElement('article');
+          card.className = 'movie';
+          const top = document.createElement('div');
+          top.className = 'movie-top';
+          const genre = document.createElement('span');
+          genre.className = 'category';
+          genre.textContent = categoryLabels[movie.category] || movie.category;
+          const year = document.createElement('span');
+          year.className = 'year';
+          year.textContent = movie.year;
+          const title = document.createElement('h3');
+          title.textContent = movie.title;
+          const synopsis = document.createElement('p');
+          synopsis.textContent = movie.synopsis || 'Una historia para descubrir.';
+          top.append(genre, year);
+          card.append(top, title, synopsis);
+          list.append(card);
+        }
+        count.textContent = `${data.count || 0} ${data.count === 1 ? 'película' : 'películas'}`;
+        setStatus(data.count ? '' : 'No hay películas para esta categoría todavía.');
+      } catch (error) {
+        setStatus(error.message || 'No se pudo cargar la colección.');
+      }
+    }
+
+    document.querySelector('#filter').addEventListener('click', loadMovies);
+    document.querySelector('#recommend').addEventListener('click', async () => {
+      if (!category.value) {
+        recommendation.classList.add('visible');
+        document.querySelector('#recommendation-text').textContent = 'Elige una categoría para recibir una recomendación.';
+        return;
+      }
+      recommendation.classList.add('visible');
+      document.querySelector('#recommendation-text').textContent = 'Buscando una película… La primera recomendación puede tardar un poco.';
+      try {
+        const response = await fetch(`/api/recommendations?category=${encodeURIComponent(category.value)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'El servicio de recomendaciones no está disponible.');
+        document.querySelector('#recommendation-text').textContent = data.recommendation;
+      } catch (error) {
+        document.querySelector('#recommendation-text').textContent = error.message;
+      }
+    });
+    loadMovies();
+  </script>
 </body>
 </html>
