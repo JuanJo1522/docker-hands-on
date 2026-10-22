@@ -68,7 +68,7 @@ services:
     restart: unless-stopped
 
   movie-ai:
-    image: ${DOCKERHUB_USERNAME:-local}/movie-ai:${IMAGE_TAG:-dev}
+    image: ${DOCKERHUB_USERNAME:-local}/movie-ai:${AI_IMAGE_TAG:-latest}
     build: ./ai
     restart: unless-stopped
     environment:
