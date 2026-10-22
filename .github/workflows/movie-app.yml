@@ -74,6 +74,8 @@ jobs:
         working-directory: step4_movie-app
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
       - name: Docker Hub login
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -88,8 +90,37 @@ jobs:
           SONAR_DB_USERNAME: ci-build
           SONAR_DB_PASSWORD: ci-build
         run: |
-          docker compose build movie-api movie-ui movie-ai
-          docker compose push movie-api movie-ui movie-ai
+          docker compose build movie-api movie-ui
+          docker compose push movie-api movie-ui
+      - name: Check whether the AI image needs publishing
+        id: ai-image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          AI_IMAGE_TAG: latest
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet HEAD^ HEAD -- ai/; then
+            if docker manifest inspect "$DOCKERHUB_USERNAME/movie-ai:$AI_IMAGE_TAG" >/dev/null 2>&1; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and push AI image when its files change
+        if: steps.ai-image.outputs.publish == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          AI_IMAGE_TAG: latest
+          MONGO_ROOT_USERNAME: ci-build
+          MONGO_ROOT_PASSWORD: ci-build
+          SONAR_DB_USERNAME: ci-build
+          SONAR_DB_PASSWORD: ci-build
+        run: |
+          docker compose build movie-ai
+          docker compose push movie-ai
       - name: Deploy stack on this machine
         env:
           MONGO_ROOT_USERNAME: ${{ secrets.MONGO_ROOT_USERNAME }}
@@ -98,6 +129,7 @@ jobs:
           SONAR_DB_PASSWORD: ${{ secrets.SONAR_DB_PASSWORD }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ github.sha }}
+          AI_IMAGE_TAG: latest
         run: |
           docker compose pull movie-api movie-ui movie-ai
           docker compose up -d --remove-orphans
