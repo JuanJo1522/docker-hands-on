@@ -9,13 +9,37 @@ services:
       MONGO_INITDB_DATABASE: movies_db
     volumes:
       - movie_data:/data/db
-      - ./mongo/init-movies.js:/docker-entrypoint-initdb.d/01-init-movies.js:ro
+      - ./mongo/seed-movies.js:/docker-entrypoint-initdb.d/01-seed-movies.js:ro
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet -u \"$${MONGO_INITDB_ROOT_USERNAME}\" -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'db.adminCommand(\"ping\").ok' | grep 1"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  movie-seed:
+    image: mongo:6.0
+    restart: "no"
+    depends_on:
+      movie-db:
+        condition: service_healthy
+    environment:
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+    volumes:
+      - ./mongo/seed-movies.js:/seed-movies.js:ro
+    entrypoint: ["mongosh"]
+    command:
+      - --host
+      - movie-db
+      - --username
+      - ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      - --password
+      - ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+      - --authenticationDatabase
+      - admin
+      - --file
+      - /seed-movies.js
 
   movie-api:
     image: ${DOCKERHUB_USERNAME:-local}/movie-api:${IMAGE_TAG:-dev}
@@ -27,8 +51,16 @@ services:
     depends_on:
       movie-db:
         condition: service_healthy
+      movie-seed:
+        condition: service_completed_successfully
       movie-ai:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/movies', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   movie-ui:
     image: ${DOCKERHUB_USERNAME:-local}/movie-ui:${IMAGE_TAG:-dev}
@@ -44,19 +76,70 @@ services:
     volumes:
       - model_cache:/models
 
+  sonarqube-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SONAR_DB_USERNAME:?Set SONAR_DB_USERNAME in .env}
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:?Set SONAR_DB_PASSWORD in .env}
+      POSTGRES_DB: sonarqube
+    volumes:
+      - sonarqube_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  sonarqube:
+    image: sonarqube:community
+    restart: unless-stopped
+    depends_on:
+      sonarqube-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/sonarqube
+      SONAR_JDBC_USERNAME: ${SONAR_DB_USERNAME:?Set SONAR_DB_USERNAME in .env}
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:?Set SONAR_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${SONAR_PORT:-9000}:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc:
+        soft: 8192
+        hard: 8192
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/api/system/status | grep -q 'UP'"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
   nginx-proxy:
     image: nginx:1.27-alpine
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8182}:80"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8182}:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - movie-ui
-      - movie-api
+      movie-ui:
+        condition: service_started
+      movie-api:
+        condition: service_healthy
 
 volumes:
   movie_data:
   model_cache:
+  sonarqube_db_data:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
 
 

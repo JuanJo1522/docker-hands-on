@@ -1,8 +1,24 @@
 services:
+  test-mongo:
+    image: mongo:6.0
+    volumes:
+      - ./mongo/seed-movies.js:/docker-entrypoint-initdb.d/01-seed-movies.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok' | grep 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   movie-tests:
     build:
       context: .
       dockerfile: Dockerfile.tests
     image: local/movie-tests:${IMAGE_TAG:-dev}
+    environment:
+      MONGO_URI: mongodb://test-mongo:27017/movies_db
+      TEST_MONGO_URI: mongodb://test-mongo:27017/movies_db
+    depends_on:
+      test-mongo:
+        condition: service_healthy
     volumes:
       - ./test-results:/workspace/test-results
