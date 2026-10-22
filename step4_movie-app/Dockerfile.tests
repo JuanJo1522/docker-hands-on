@@ -14,4 +14,4 @@ COPY backend /workspace/backend
 COPY mongo /workspace/mongo
 RUN mkdir -p /workspace/test-results
 
-CMD ["pytest", "-q", "--disable-warnings", "--cov=backend", "--cov-report=term-missing", "--cov-report=xml:/workspace/test-results/coverage.xml", "backend/test_app.py", "mongo/test_db.py"]
+CMD ["pytest", "-q", "--disable-warnings", "--cov=backend", "--cov-report=term-missing", "--cov-report=xml:/workspace/test-results/coverage.xml", "backend/test_app.py", "backend/test_integration.py", "mongo/test_db.py"]

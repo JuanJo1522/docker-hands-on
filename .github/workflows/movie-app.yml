@@ -17,12 +17,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Run tests with coverage
-        run: docker compose -f docker-compose.test.yml run --build --rm movie-tests
+        run: docker compose -p movie-tests -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from movie-tests
+      - name: Run browser end-to-end tests
+        run: docker compose -p movie-e2e -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e
       - name: SonarQube scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+          SONAR_DB_USERNAME: ${{ secrets.SONAR_DB_USERNAME }}
+          SONAR_DB_PASSWORD: ${{ secrets.SONAR_DB_PASSWORD }}
+          MONGO_ROOT_USERNAME: ci-check
+          MONGO_ROOT_PASSWORD: ci-check
         run: |
+          docker compose up -d sonarqube
+          for attempt in $(seq 1 90); do
+            if curl -fsS "$SONAR_HOST_URL/api/system/status" | grep -q 'UP'; then
+              break
+            fi
+            if [ "$attempt" -eq 90 ]; then
+              echo "SonarQube did not become ready at $SONAR_HOST_URL" >&2
+              docker compose logs sonarqube sonarqube-db
+              exit 1
+            fi
+            sleep 5
+          done
           docker run --rm --network host \
             -e SONAR_HOST_URL="$SONAR_HOST_URL" \
             -e SONAR_TOKEN="$SONAR_TOKEN" \
@@ -32,11 +50,18 @@ jobs:
               -Dsonar.projectBaseDir=/usr/src/step4_movie-app \
               -Dsonar.host.url="$SONAR_HOST_URL" \
               -Dsonar.token="$SONAR_TOKEN"
+      - name: Stop test stacks
+        if: always()
+        run: |
+          docker compose -p movie-tests -f docker-compose.test.yml down -v --remove-orphans
+          docker compose -p movie-e2e -f docker-compose.e2e.yml down -v --remove-orphans
       - name: Validate Compose
         env:
           # Placeholders validate Compose interpolation; deploy secrets are not needed for this syntax check.
           MONGO_ROOT_USERNAME: ci-check
           MONGO_ROOT_PASSWORD: ci-check
+          SONAR_DB_USERNAME: ci-check
+          SONAR_DB_PASSWORD: ci-check
         run: docker compose config --quiet
 
   publish-and-deploy:
@@ -60,6 +85,8 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           MONGO_ROOT_USERNAME: ci-build
           MONGO_ROOT_PASSWORD: ci-build
+          SONAR_DB_USERNAME: ci-build
+          SONAR_DB_PASSWORD: ci-build
         run: |
           docker compose build movie-api movie-ui movie-ai
           docker compose push movie-api movie-ui movie-ai
@@ -67,6 +94,8 @@ jobs:
         env:
           MONGO_ROOT_USERNAME: ${{ secrets.MONGO_ROOT_USERNAME }}
           MONGO_ROOT_PASSWORD: ${{ secrets.MONGO_ROOT_PASSWORD }}
+          SONAR_DB_USERNAME: ${{ secrets.SONAR_DB_USERNAME }}
+          SONAR_DB_PASSWORD: ${{ secrets.SONAR_DB_PASSWORD }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ github.sha }}
         run: |

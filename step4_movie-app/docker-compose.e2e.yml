@@ -1,0 +1,58 @@
+services:
+  movie-db:
+    image: mongo:6.0
+    volumes:
+      - ./mongo/seed-movies.js:/docker-entrypoint-initdb.d/01-seed-movies.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok' | grep 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  movie-ai:
+    image: python:3.11-alpine
+    volumes:
+      - ./e2e/mock_ai.py:/app/mock_ai.py:ro
+    command: ["python", "/app/mock_ai.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  movie-api:
+    build: ./backend
+    environment:
+      MONGO_URI: mongodb://movie-db:27017/movies_db
+      AI_URL: http://movie-ai:8000
+    depends_on:
+      movie-db:
+        condition: service_healthy
+      movie-ai:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/movies', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  movie-ui:
+    build: ./frontend
+
+  nginx-proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      movie-ui:
+        condition: service_started
+      movie-api:
+        condition: service_healthy
+
+  e2e:
+    build:
+      context: ./e2e
+      dockerfile: Dockerfile
+    depends_on:
+      - nginx-proxy
